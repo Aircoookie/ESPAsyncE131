@@ -34,7 +34,6 @@
 #include <lwip/ip_addr.h>
 #include <lwip/igmp.h>
 #include <Arduino.h>
-#include "RingBuf.h"
 
 #if LWIP_VERSION_MAJOR == 1
 typedef struct ip_addr ip4_addr_t;
@@ -119,14 +118,8 @@ typedef enum {
     E131_MULTICAST
 } e131_listen_t;
 
-// Status structure
-typedef struct {
-    uint32_t    num_packets;
-    uint32_t    packet_errors;
-    IPAddress   last_clientIP;
-    uint16_t    last_clientPort;
-    unsigned long    last_seen;
-} e131_stats_t;
+// new packet callback
+typedef void (*e131_packet_callback_function) (e131_packet_t* p, IPAddress clientIP);
 
 class ESPAsyncE131 {
  private:
@@ -138,7 +131,6 @@ class ESPAsyncE131 {
 
     e131_packet_t   *sbuff;     // Pointer to scratch packet buffer
     AsyncUDP        udp;        // AsyncUDP
-    RingBuf         *pbuff;     // Ring Buffer of universe packet buffers
 
     // Internal Initializers
     bool initUnicast();
@@ -146,21 +138,14 @@ class ESPAsyncE131 {
 
     // Packet parser callback
     void parsePacket(AsyncUDPPacket _packet);
+    
+    e131_packet_callback_function _callback = nullptr;
 
  public:
-    e131_stats_t  stats;    // Statistics tracker
-
-    ESPAsyncE131(uint8_t buffers = 1);
+    ESPAsyncE131(e131_packet_callback_function callback);
 
     // Generic UDP listener, no physical or IP configuration
     bool begin(e131_listen_t type, uint16_t universe = 1, uint8_t n = 1);
-
-    // Ring buffer access
-    inline bool isEmpty() { return pbuff->isEmpty(pbuff); }
-    inline void *pull(e131_packet_t *packet) { return pbuff->pull(pbuff, packet); }
-    
-    // Diag functions
-    void dumpError(e131_error_t error);
 };
 
 #endif  // ESPASYNCE131_H_

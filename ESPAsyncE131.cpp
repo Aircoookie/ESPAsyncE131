@@ -24,11 +24,8 @@
 const byte ESPAsyncE131::ACN_ID[12] = { 0x41, 0x53, 0x43, 0x2d, 0x45, 0x31, 0x2e, 0x31, 0x37, 0x00, 0x00, 0x00 };
 
 // Constructor
-ESPAsyncE131::ESPAsyncE131(uint8_t buffers) {
-    pbuff = RingBuf_new(sizeof(e131_packet_t), buffers);
-
-    stats.num_packets = 0;
-    stats.packet_errors = 0;
+ESPAsyncE131::ESPAsyncE131(e131_packet_callback_function callback) {
+  _callback = callback;
 }
 
 /////////////////////////////////////////////////////////
@@ -56,7 +53,6 @@ bool ESPAsyncE131::begin(e131_listen_t type, uint16_t universe, uint8_t n) {
 
 bool ESPAsyncE131::initUnicast() {
     bool success = false;
-    delay(100);
 
     if (udp.listen(E131_DEFAULT_PORT)) {
         udp.onPacket(std::bind(&ESPAsyncE131::parsePacket, this,
@@ -68,7 +64,6 @@ bool ESPAsyncE131::initUnicast() {
 
 bool ESPAsyncE131::initMulticast(uint16_t universe, uint8_t n) {
     bool success = false;
-    delay(100);
 
     IPAddress address = IPAddress(239, 255, ((universe >> 8) & 0xff),
         ((universe >> 0) & 0xff));
@@ -114,53 +109,8 @@ void ESPAsyncE131::parsePacket(AsyncUDPPacket _packet) {
     if (sbuff->property_values[0] != 0)
         error = ERROR_IGNORE;
 
-
     if (!error) {
-        pbuff->add(pbuff, sbuff);
-        stats.num_packets++;
-        stats.last_clientIP = _packet.remoteIP();
-        stats.last_clientPort = _packet.remotePort();
-        stats.last_seen = millis();
-    } else if (error == ERROR_IGNORE) {
-        // Do nothing
-    } else {
-        if (Serial)
-            dumpError(error);
-        stats.packet_errors++;
+      _callback(sbuff, _packet.remoteIP());
     }
 }
 
-/////////////////////////////////////////////////////////
-//
-// Debugging functions - Public
-//
-/////////////////////////////////////////////////////////
-
-void ESPAsyncE131::dumpError(e131_error_t error) {
-    switch (error) {
-        case ERROR_ACN_ID:
-            Serial.print(F("INVALID PACKET ID: "));
-            for (uint i = 0; i < sizeof(ACN_ID); i++)
-                Serial.print(sbuff->acn_id[i], HEX);
-            Serial.println("");
-            break;
-        case ERROR_PACKET_SIZE:
-            Serial.println(F("INVALID PACKET SIZE: "));
-            break;
-        case ERROR_VECTOR_ROOT:
-            Serial.print(F("INVALID ROOT VECTOR: 0x"));
-            Serial.println(htonl(sbuff->root_vector), HEX);
-            break;
-        case ERROR_VECTOR_FRAME:
-            Serial.print(F("INVALID FRAME VECTOR: 0x"));
-            Serial.println(htonl(sbuff->frame_vector), HEX);
-            break;
-        case ERROR_VECTOR_DMP:
-            Serial.print(F("INVALID DMP VECTOR: 0x"));
-            Serial.println(sbuff->dmp_vector, HEX);
-        case ERROR_NONE:
-            break;
-        case ERROR_IGNORE:
-            break;
-    }
-}
